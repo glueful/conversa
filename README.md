@@ -1,15 +1,15 @@
 # Conversa (SMS & WhatsApp) for Glueful
 
-> **Status: In development.** This README documents the design and the scope of
-> the first release. Sections describing behavior are the **intended** contract;
-> where something is not yet implemented it is called out as *Planned* or under
-> [Roadmap](#roadmap). Treat this as the spec the extension is being built against.
+> **🚀 Version 0.1.0** — `sms`/`whatsapp` notification channels with swappable
+> provider drivers (Twilio, Meta WhatsApp Cloud, log), a message log, delivery
+> webhooks, idempotent direct sends, WhatsApp template send, and message-lifecycle
+> events. Pre-release: the API is stable but not yet battle-tested in production.
 
 ## Overview
 
 Conversa is Glueful's **phone-based messaging layer** — it registers `sms` and
 `whatsapp` notification channels and sends through swappable provider backends
-(Twilio, Meta WhatsApp Cloud API, Africa's Talking, Vonage, …). Applications send
+(Twilio and Meta WhatsApp Cloud API, with more to come). Applications send
 OTPs, alerts, reminders, order updates, and customer messages without caring which
 provider is wired up underneath.
 
@@ -35,9 +35,9 @@ in the framework (see [Powering verification & notifications](#powering-verifica
 - **Security workflows.** Phone verification, login codes, password-reset codes,
   and transaction confirmation need a phone-based delivery channel — Conversa is
   that channel; the framework drives the workflow.
-- **Provider independence.** Run both channels on Twilio to start (it serves SMS
-  *and* WhatsApp), then — say — move SMS to Africa's Talking while keeping WhatsApp
-  on Twilio or Meta Cloud API, without touching application code.
+- **Provider independence.** Run both channels on Twilio (it serves SMS *and*
+  WhatsApp), or keep WhatsApp on Meta Cloud API while Twilio handles SMS — and add
+  more providers later behind the same interface, without touching application code.
 
 ## Scope of v1
 
@@ -46,21 +46,24 @@ that later conversational features build on:
 
 - ✅ **`sms` and `whatsapp` notification channels** registered with the framework's `ChannelManager` (the same contract `email-notification`'s `EmailChannel` implements)
 - ✅ **Send SMS** through a configured driver
-- ✅ **Send WhatsApp** through a configured driver
-- ✅ **Provider drivers** behind one interface (Twilio, WhatsApp Cloud, Africa's Talking, Vonage), selectable per channel via config
-- ✅ **Delivery webhooks** — receive provider status callbacks and update message state
+- ✅ **Send WhatsApp** through a configured driver — free text or **approved templates**
+- ✅ **Provider drivers** behind one interface (Twilio, WhatsApp Cloud, log), selectable per channel via config
+- ✅ **WhatsApp templates** — a logical template name maps to each driver's identity (Twilio `ContentSid`, Meta name + language) via `templates` config
+- ✅ **Idempotent direct sends** — caller-supplied `Idempotency-Key` collapses retries to one message
+- ✅ **Delivery webhooks** — receive provider status callbacks (fail-closed signature verification) and update message state
 - ✅ **Message logging** — persist every send, its delivery state, provider response, and retries
+- ✅ **Lifecycle events** — `MessageSent`, `MessageDelivered`, `MessageFailed`
 
 Everything under [Roadmap](#roadmap) (inbound replies, conversation threads,
-templates, campaigns, contact lists, opt-in management) is explicitly **out of
-scope for v1**. So is OTP/verification *logic* — Conversa is the channel those
-flows deliver over, not the flow itself.
+campaigns, contact lists, opt-in management) is explicitly **out of scope for v1**.
+So is OTP/verification *logic* — Conversa is the channel those flows deliver over,
+not the flow itself.
 
 ## Requirements
 
 - PHP 8.3+
-- Glueful Framework 1.48.0+
-- A configured messaging provider account (Twilio, Meta WhatsApp Cloud API, Africa's Talking, or Vonage)
+- Glueful Framework 1.49.0+
+- A configured messaging provider account (Twilio or Meta WhatsApp Cloud API)
 - Outbound HTTPS access to the provider's API (calls go through Glueful's HTTP client)
 
 ## Installation
@@ -92,13 +95,21 @@ environment variables. Each channel selects a **default driver**; you can run SM
 and WhatsApp on different providers.
 
 ```env
-# Channel → driver selection
-CONVERSA_SMS_DRIVER=twilio              # twilio | africastalking | vonage
-CONVERSA_WHATSAPP_DRIVER=whatsapp_cloud # whatsapp_cloud | twilio
+# Channel → driver selection (default: log — writes to the log instead of a provider,
+# so the extension is safe to enable before any credentials are configured)
+CONVERSA_SMS_DRIVER=twilio              # twilio | log
+CONVERSA_WHATSAPP_DRIVER=whatsapp_cloud # whatsapp_cloud | twilio | log
 
 # Message logging / retries
 CONVERSA_LOG_MESSAGES=true
 CONVERSA_MAX_RETRIES=3
+
+# Privacy (both default true)
+CONVERSA_STORE_BODY=true                # persist the message body/template vars in the log
+CONVERSA_REDACT_PROVIDER_RESPONSE=true  # redact recipient/body fields from the stored provider response
+
+# Public base URL used to rebuild the callback URL Twilio signed when behind a proxy/LB
+CONVERSA_WEBHOOK_BASE_URL=https://api.example.com
 ```
 
 ### Provider credentials
@@ -115,20 +126,12 @@ CONVERSA_WHATSAPP_PHONE_ID=1234567890
 CONVERSA_WHATSAPP_TOKEN=EAAxxxxxxxx
 CONVERSA_WHATSAPP_VERIFY_TOKEN=your-webhook-verify-token   # GET webhook handshake
 CONVERSA_WHATSAPP_APP_SECRET=xxxxxxxx                      # webhook signature check
-
-# Africa's Talking (SMS)
-CONVERSA_AT_USERNAME=your-username
-CONVERSA_AT_API_KEY=xxxxxxxx
-CONVERSA_AT_FROM=YOURSENDERID
-
-# Vonage (SMS)
-CONVERSA_VONAGE_KEY=xxxxxxxx
-CONVERSA_VONAGE_SECRET=xxxxxxxx
-CONVERSA_VONAGE_FROM=YourBrand
 ```
 
-Only the drivers you actually use need credentials. A driver whose configuration
-is missing is skipped with a log entry rather than crashing the send path.
+Only the drivers you actually use need credentials. When the driver selected for a
+channel is unavailable (missing credentials/sender), the send is **recorded as a
+`failed` message** and a `MessageFailed` event is dispatched — the send path never
+crashes, and you can see the failure in the message log.
 
 ## Provider drivers
 
@@ -139,8 +142,15 @@ on a specific vendor. v1 ships:
 | ---------- | -------- | --- | -------- |
 | `twilio` | Twilio | ✅ | ✅ |
 | `whatsapp_cloud` | Meta WhatsApp Cloud API | — | ✅ |
-| `africastalking` | Africa's Talking | ✅ | — |
-| `vonage` | Vonage (Nexmo) | ✅ | — |
+| `log` | Logs the message instead of sending (dev/test default) | ✅ | ✅ |
+
+Driver availability is **channel-aware**: Twilio reports `whatsapp` as available
+only when `CONVERSA_TWILIO_WHATSAPP_FROM` is set, and `sms` only when
+`CONVERSA_TWILIO_SMS_FROM` is set — so a one-channel Twilio setup never advertises
+the other channel.
+
+More providers (e.g. Africa's Talking, Vonage) are [planned](#roadmap) behind the
+same interface — see Roadmap.
 
 Switching providers is a config change (`CONVERSA_SMS_DRIVER` / `CONVERSA_WHATSAPP_DRIVER`)
 — no code changes. Adding a new provider means implementing the driver interface
@@ -181,8 +191,8 @@ limiting; webhook endpoints are public but signature/verify-token protected.
 
 | Method & path | Purpose | v1 |
 | ------------- | ------- | -- |
-| `POST /conversa/messages` | Send an SMS or WhatsApp message directly | ✅ |
-| `GET /conversa/messages` | Query the message log (status, recipient, date) | ✅ |
+| `POST /conversa/messages` | Send an SMS or WhatsApp message directly (honours an `Idempotency-Key` header) | ✅ |
+| `GET /conversa/messages` | Query the message log, filterable by `status` / `channel` / `to`, paginated via `page` / `per_page` | ✅ |
 | `GET /conversa/webhooks/{provider}` | Provider webhook handshake (e.g. Meta verify token) | ✅ |
 | `POST /conversa/webhooks/{provider}` | Delivery-status (and, later, inbound) callbacks | ✅ |
 
@@ -203,8 +213,20 @@ curl -s -X POST "$API_BASE/conversa/messages" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "channel": "whatsapp", "to": "+15551234567", "body": "Welcome to Acme!" }' | jq .
 
-# Query the message log
-curl -s "$API_BASE/conversa/messages?status=delivered" \
+# Send a WhatsApp template (mapped to a provider template via `templates` config)
+curl -s -X POST "$API_BASE/conversa/messages" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{ "channel": "whatsapp", "to": "+15551234567",
+        "template": { "name": "order_shipped", "variables": ["1Z999"] } }' | jq .
+
+# Idempotent send — repeating the same key returns the original message, no second send
+curl -s -X POST "$API_BASE/conversa/messages" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-4711-shipped" \
+  -d '{ "channel": "sms", "to": "+15551234567", "body": "Your order has shipped" }' | jq .
+
+# Query the message log (filter + paginate)
+curl -s "$API_BASE/conversa/messages?status=delivered&channel=sms&per_page=25&page=1" \
   -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
@@ -241,15 +263,29 @@ class User implements Notifiable
 
 ### Direct send (one-off messages)
 
+`ConversaService::send()` takes the channel, recipient, a payload array (exactly one
+of `body` or `template`), and optional `opts` (`idempotency_key`, `from`, `meta`). It
+returns a `DriverResult` (`->ok`, `->providerMessageId`, `->error`).
+
 ```php
-use Glueful\Extensions\Conversa\Services\ConversaService;
+use Glueful\Extensions\Conversa\ConversaService;
 
 $conversa = app($context, ConversaService::class);
-$conversa->send(channel: 'whatsapp', to: '+15551234567', body: 'Welcome to Acme!');
-```
 
-> The exact service method signatures are being finalized during implementation;
-> this section reflects the intended shape and will be kept in sync with the code.
+// Free-text SMS / WhatsApp
+$conversa->send('whatsapp', '+15551234567', ['body' => 'Welcome to Acme!']);
+
+// WhatsApp template (resolved to a provider template via `templates` config)
+$conversa->send('whatsapp', '+15551234567', [
+    'template' => ['name' => 'order_shipped', 'variables' => ['1Z999']],
+]);
+
+// Idempotent send — a repeat key returns the original message without sending again
+$result = $conversa->send('sms', '+15551234567', ['body' => 'Code: 123456'], [
+    'idempotency_key' => 'login-otp-7f3a',
+]);
+// $result->ok, $result->providerMessageId, $result->error
+```
 
 ## Delivery tracking
 
@@ -273,10 +309,8 @@ queries this table.
   signs `POST` callbacks with `CONVERSA_WHATSAPP_APP_SECRET` (verified before
   processing).
 - **Twilio** posts delivery-status callbacks for **both SMS and WhatsApp** to
-  `/conversa/webhooks/twilio`; **Vonage / Africa's Talking** post SMS status to
-  their respective `/conversa/webhooks/{provider}` paths. Configure that URL in the
-  provider dashboard; signature verification is applied per provider where
-  supported.
+  `/conversa/webhooks/twilio`; configure that URL in the Twilio console. Signature
+  verification is applied where the provider supports it.
 
 Point each provider's status-callback / webhook URL at the matching path and
 Conversa reconciles delivery state automatically.
@@ -286,10 +320,9 @@ Conversa reconciles delivery state automatically.
 v1 is the sending + tracking core. Planned follow-ups (not in v1):
 
 - **Two-way messaging** — inbound message webhooks, replies, and conversation threads (WhatsApp especially is bidirectional).
-- **Templates** — provider-approved WhatsApp message templates and transactional SMS templates.
 - **Campaigns & broadcasts** — contact lists, batch sends, scheduling.
 - **Preferences & compliance** — opt-in/opt-out management, per-recipient channel preferences, quiet hours.
-- **More drivers** — additional regional providers behind the same interface.
+- **More drivers** — additional providers behind the same interface (e.g. Africa's Talking, Vonage, and other regional gateways).
 
 ## Security considerations
 
@@ -304,6 +337,7 @@ v1 is the sending + tracking core. Planned follow-ups (not in v1):
 - Package: `glueful/conversa` (`type: glueful-extension`)
 - Provider: `Glueful\Extensions\Conversa\ConversaServiceProvider`
 - Channels: `sms`, `whatsapp` (implement `NotificationChannel`, registered with `ChannelManager`)
+- Events: `MessageSent`, `MessageDelivered`, `MessageFailed` (extend the framework `BaseEvent`)
 - Config: `config/conversa.php` · Env prefix: `CONVERSA_*`
 - Migration: `conversa_messages`
 

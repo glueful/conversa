@@ -25,9 +25,33 @@ use Psr\Log\NullLogger;
 
 final class ConversaServiceProvider extends ServiceProvider
 {
+    private static ?string $cachedVersion = null;
+
+    /** Read the extension version from composer.json (cached). */
+    public static function composerVersion(): string
+    {
+        if (self::$cachedVersion === null) {
+            $path = __DIR__ . '/../composer.json';
+            $composer = json_decode((string) file_get_contents($path), true);
+            self::$cachedVersion = $composer['extra']['glueful']['version'] ?? '0.0.0';
+        }
+
+        return self::$cachedVersion;
+    }
+
     public function getName(): string
     {
         return 'Conversa';
+    }
+
+    public function getVersion(): string
+    {
+        return self::composerVersion();
+    }
+
+    public function getDescription(): string
+    {
+        return 'SMS & WhatsApp messaging channels for Glueful';
     }
 
     /**
@@ -136,5 +160,17 @@ final class ConversaServiceProvider extends ServiceProvider
 
         $this->loadMigrationsFrom(__DIR__ . '/../migrations');
         $this->loadRoutesFrom(__DIR__ . '/../routes.php');
+
+        // Register extension metadata for CLI and diagnostics.
+        try {
+            $this->app->get(\Glueful\Extensions\ExtensionManager::class)->registerMeta(self::class, [
+                'slug' => 'conversa',
+                'name' => 'Conversa',
+                'version' => self::composerVersion(),
+                'description' => 'SMS & WhatsApp messaging channels for Glueful',
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[Conversa] Failed to register extension metadata: ' . $e->getMessage());
+        }
     }
 }

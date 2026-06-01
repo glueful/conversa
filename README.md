@@ -10,7 +10,7 @@
 Conversa is Glueful's **phone-based messaging layer** — it registers `sms` and
 `whatsapp` notification channels and sends through swappable provider backends
 (Twilio and Meta WhatsApp Cloud API, with more to come). Applications send
-OTPs, alerts, reminders, order updates, and customer messages without caring which
+alerts, reminders, order updates, and customer messages without caring which
 provider is wired up underneath.
 
 It completes Glueful's multi-channel notification story:
@@ -21,28 +21,25 @@ It completes Glueful's multi-channel notification story:
 | `glueful/notiva` | `push` | Mobile & web push (FCM, APNs, Web Push) |
 | **`glueful/conversa`** | **`sms`, `whatsapp`** | **Phone-based messaging** |
 
-**Conversa provides the delivery *means*, not workflow logic.** Exactly like
-`email-notification` registers an `email` channel that the framework's notification
-and verification machinery uses, Conversa registers `sms`/`whatsapp` channels. It
-does **not** own OTP generation, code storage, or verification — that already lives
-in the framework (see [Powering verification & notifications](#powering-verification--notifications)).
+**Conversa provides the delivery *means*, not workflow logic.** Just as
+`email-notification` registers an `email` channel for the framework's notification
+system to use, Conversa registers `sms`/`whatsapp` channels — your application code
+decides *what* to send and *when*; Conversa delivers it and tracks the result
+(see [Notification-system integration](#notification-system-integration)).
 
 ### Why phone messaging
 
 - **Reach where email/push fall short.** In many markets (across Africa, LATAM,
   and mobile-first products generally) SMS and WhatsApp are far more reliable than
   email and are not as easily disabled as push.
-- **Security workflows.** Phone verification, login codes, password-reset codes,
-  and transaction confirmation need a phone-based delivery channel — Conversa is
-  that channel; the framework drives the workflow.
+- **Transactional & high-priority alerts.** Account and transaction confirmations
+  and other time-sensitive notifications often need a phone-based delivery channel —
+  Conversa is that channel; your application drives the workflow.
 - **Provider independence.** Run both channels on Twilio (it serves SMS *and*
   WhatsApp), or keep WhatsApp on Meta Cloud API while Twilio handles SMS — and add
   more providers later behind the same interface, without touching application code.
 
-## Scope of v1
-
-The first version is deliberately **narrow** — a solid sending + tracking core
-that later conversational features build on:
+## Features
 
 - ✅ **`sms` and `whatsapp` notification channels** registered with the framework's `ChannelManager` (the same contract `email-notification`'s `EmailChannel` implements)
 - ✅ **Send SMS** through a configured driver
@@ -54,10 +51,9 @@ that later conversational features build on:
 - ✅ **Message logging** — persist every send, its delivery state, provider response, and retries
 - ✅ **Lifecycle events** — `MessageSent`, `MessageDelivered`, `MessageFailed`
 
-Everything under [Roadmap](#roadmap) (inbound replies, conversation threads,
-campaigns, contact lists, opt-in management) is explicitly **out of scope for v1**.
-So is OTP/verification *logic* — Conversa is the channel those flows deliver over,
-not the flow itself.
+Conversa is the delivery channel, not the workflow. Conversational features
+(inbound replies, threads, campaigns, contact lists, opt-in management) are tracked
+on the [Roadmap](#roadmap).
 
 ## Requirements
 
@@ -136,7 +132,7 @@ crashes, and you can see the failure in the message log.
 ## Provider drivers
 
 Every provider implements one driver interface, so application code never depends
-on a specific vendor. v1 ships:
+on a specific vendor. Conversa ships with:
 
 | Driver key | Provider | SMS | WhatsApp |
 | ---------- | -------- | --- | -------- |
@@ -156,48 +152,32 @@ Switching providers is a config change (`CONVERSA_SMS_DRIVER` / `CONVERSA_WHATSA
 — no code changes. Adding a new provider means implementing the driver interface
 and registering it; the channels and public API are unchanged.
 
-## Powering verification & notifications
+## Notification-system integration
 
-Conversa follows the same pattern as `email-notification`. The framework's
-verification machinery (`Glueful\Security\EmailVerification` and the
-`NotificationService` / `NotificationDispatcher` it uses) **owns** code
-generation, storage, expiry, and verification, and dispatches the message to a
-**channel**. `email-notification` provides the `email` channel that
-`POST /auth/verify-email` and `POST /auth/verify-otp` deliver over today.
+Conversa plugs into Glueful's notification system the same way `email-notification`
+does. It implements `NotificationChannel` for `sms` and `whatsapp` and registers both
+with the `ChannelManager` during boot, so anything that dispatches to those channels
+is delivered by Conversa:
 
-Conversa provides the `sms` and `whatsapp` channels so the **same machinery** can
-deliver codes and notifications over the phone. Conversa never sees the OTP logic
-— it only sends what the channel is handed and reports delivery. Concretely:
+- `getChannelName()` returns the channel (`sms` / `whatsapp`).
+- `send($notifiable, $data)` reads `routeNotificationFor('sms'|'whatsapp')` for the
+  destination number and sends `$data['body']` (or `$data['template']`).
 
-- Conversa implements `NotificationChannel` for `sms` and `whatsapp`
-  (`getChannelName()` returns the channel; `send($notifiable, $data)` reads
-  `routeNotificationFor('sms'|'whatsapp')` for the destination number) and
-  registers both with the `ChannelManager` during boot — mirroring
-  `EmailNotificationProvider::register(ChannelManager)`.
-- A verification or notification flow that targets the `sms`/`whatsapp` channel
-  (e.g. a phone-verification endpoint, or any `NotificationDispatcher::send(..., ['sms'])`
-  call) is then delivered by Conversa.
-
-> The framework's current OTP verifier targets the `email` channel specifically.
-> Delivering verification codes over SMS/WhatsApp is a framework-side change (point
-> the verifier at the `sms`/`whatsapp` channel, or add a phone-verification flow) —
-> Conversa's responsibility is purely to **make those channels available and send
-> reliably**, not to reimplement OTP inside the extension.
+Any `NotificationDispatcher::send(..., ['sms'])` (or `['whatsapp']`) call — from your
+own code or elsewhere in the framework — routes through Conversa, which sends via the
+configured driver and records the result.
 
 ## Endpoints
 
 Base prefix: `/conversa`. Application endpoints require auth and apply rate
 limiting; webhook endpoints are public but signature/verify-token protected.
 
-| Method & path | Purpose | v1 |
-| ------------- | ------- | -- |
-| `POST /conversa/messages` | Send an SMS or WhatsApp message directly (honours an `Idempotency-Key` header) | ✅ |
-| `GET /conversa/messages` | Query the message log, filterable by `status` / `channel` / `to`, paginated via `page` / `per_page` | ✅ |
-| `GET /conversa/webhooks/{provider}` | Provider webhook handshake (e.g. Meta verify token) | ✅ |
-| `POST /conversa/webhooks/{provider}` | Delivery-status (and, later, inbound) callbacks | ✅ |
-
-Note there is **no** `/conversa/otp/*` endpoint — verification flows live in the
-framework and use the `sms`/`whatsapp` channels, as described above.
+| Method & path | Purpose |
+| ------------- | ------- |
+| `POST /conversa/messages` | Send an SMS or WhatsApp message directly (honours an `Idempotency-Key` header) |
+| `GET /conversa/messages` | Query the message log, filterable by `status` / `channel` / `to`, paginated via `page` / `per_page` |
+| `GET /conversa/webhooks/{provider}` | Provider webhook handshake (e.g. Meta verify token) |
+| `POST /conversa/webhooks/{provider}` | Provider delivery-status callbacks |
 
 ```bash
 API_BASE=http://localhost:8000
@@ -281,8 +261,8 @@ $conversa->send('whatsapp', '+15551234567', [
 ]);
 
 // Idempotent send — a repeat key returns the original message without sending again
-$result = $conversa->send('sms', '+15551234567', ['body' => 'Code: 123456'], [
-    'idempotency_key' => 'login-otp-7f3a',
+$result = $conversa->send('sms', '+15551234567', ['body' => 'Your order has shipped'], [
+    'idempotency_key' => 'order-4711-shipped',
 ]);
 // $result->ok, $result->providerMessageId, $result->error
 ```
@@ -317,7 +297,7 @@ Conversa reconciles delivery state automatically.
 
 ## Roadmap
 
-v1 is the sending + tracking core. Planned follow-ups (not in v1):
+Conversa today is the sending + tracking core. Planned follow-ups:
 
 - **Two-way messaging** — inbound message webhooks, replies, and conversation threads (WhatsApp especially is bidirectional).
 - **Campaigns & broadcasts** — contact lists, batch sends, scheduling.
@@ -328,7 +308,7 @@ v1 is the sending + tracking core. Planned follow-ups (not in v1):
 
 - Treat provider tokens/secrets as secrets; never commit them and restrict who can read the `.env`.
 - Verify webhook authenticity (Meta app-secret signature, provider signing where available) before trusting status updates.
-- Do not log full message bodies or recipient numbers in production beyond what's needed for support; never log verification codes the channel is handed.
+- Do not log full message bodies or recipient numbers in production beyond what's needed for support; message bodies may carry sensitive content (see `CONVERSA_STORE_BODY` / `CONVERSA_REDACT_PROVIDER_RESPONSE`).
 - Apply rate limits to send endpoints (included) to prevent abuse and runaway provider spend.
 - Store phone numbers in E.164 and treat them as personal data.
 
@@ -345,7 +325,7 @@ v1 is the sending + tracking core. Planned follow-ups (not in v1):
 
 - **Extension not loading** — installing doesn't enable it; run `php glueful extensions:enable conversa`, then `php glueful extensions:diagnose`. In production, run `php glueful extensions:cache`.
 - **Channel not found when sending** — confirm the extension is enabled and the `sms`/`whatsapp` channels registered (`extensions:diagnose`); the framework looks them up by name via the `ChannelManager`.
-- **Sends silently skipped** — the selected driver's credentials are missing; check `extensions:diagnose` and the logs (the driver logs and skips rather than crashing).
+- **Sends recorded as `failed` with `driver_unavailable`** — the selected driver's credentials/sender are missing; check `extensions:diagnose` and the logs. The send is logged as `failed` (and a `MessageFailed` event fires) rather than crashing.
 - **WhatsApp webhook 403 on setup** — `CONVERSA_WHATSAPP_VERIFY_TOKEN` must match the value entered in the Meta dashboard.
 - **Delivery state stuck at `sent`** — the provider's status-callback URL isn't pointed at `/conversa/webhooks/{provider}`, or signature verification is rejecting it.
 - **No message-log rows** — run migrations (`php glueful migrate run`) and ensure `CONVERSA_LOG_MESSAGES=true`.

@@ -83,7 +83,8 @@ final class ConversaService
         $payload ??= $this->reconstructPayload($row);
         if ($payload === null) {
             throw new \RuntimeException(
-                "Conversa: cannot retry '{$messageUuid}' — payload was not stored (store_body=false); pass a fresh payload."
+                "Conversa: cannot retry '{$messageUuid}' — payload was not stored "
+                . '(store_body=false); pass a fresh payload.'
             );
         }
 
@@ -183,14 +184,14 @@ final class ConversaService
         if ($storeBody) {
             $row['body'] = $m->body;
             if ($m->template !== null) {
-                $row['template_name'] = $m->template['name'] ?? null;
+                $row['template_name'] = $m->template['name'];
                 $row['template_vars'] = isset($m->template['variables'])
                     ? json_encode($m->template['variables'], JSON_THROW_ON_ERROR)
                     : null;
             }
         } elseif ($m->template !== null) {
             // Template name is low-sensitivity; keep it for audit even when bodies are off.
-            $row['template_name'] = $m->template['name'] ?? null;
+            $row['template_name'] = $m->template['name'];
         }
 
         return $row;

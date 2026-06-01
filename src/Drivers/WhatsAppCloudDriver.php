@@ -75,7 +75,10 @@ final class WhatsAppCloudDriver implements ConversaDriver
             );
             $data = $resp->json();
             if (!$resp->isSuccessful()) {
-                return DriverResult::failed('whatsapp_cloud_http_' . $resp->getStatusCode(), is_array($data) ? $data : []);
+                return DriverResult::failed(
+                    'whatsapp_cloud_http_' . $resp->getStatusCode(),
+                    is_array($data) ? $data : [],
+                );
             }
             $id = $data['messages'][0]['id'] ?? null;
 

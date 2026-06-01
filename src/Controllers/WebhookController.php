@@ -89,9 +89,20 @@ final class WebhookController
                 continue;
             }
             if ($entry['status'] === 'delivered') {
-                ($this->dispatch)(new MessageDelivered($row['uuid'], $row['channel'], $provider, $entry['provider_message_id']));
+                ($this->dispatch)(new MessageDelivered(
+                    $row['uuid'],
+                    $row['channel'],
+                    $provider,
+                    $entry['provider_message_id'],
+                ));
             } elseif (in_array($entry['status'], ['failed', 'undelivered'], true)) {
-                ($this->dispatch)(new MessageFailed($row['uuid'], $row['channel'], $provider, $row['to'], $entry['status']));
+                ($this->dispatch)(new MessageFailed(
+                    $row['uuid'],
+                    $row['channel'],
+                    $provider,
+                    $row['to'],
+                    $entry['status'],
+                ));
             }
         }
 

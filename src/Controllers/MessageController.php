@@ -58,6 +58,16 @@ final class MessageController
             }
         }
 
-        return Response::success($this->repository->findAll($conditions, ['created_at' => 'DESC'], 50));
+        $page = max(1, (int) $request->query->get('page', 1));
+        $perPage = min(100, max(1, (int) $request->query->get('per_page', 25)));
+
+        $result = $this->repository->paginate($page, $perPage, $conditions, ['created_at' => 'DESC']);
+
+        return Response::paginated(
+            array_values($result['data']),
+            (int) $result['total'],
+            (int) $result['current_page'],
+            (int) $result['per_page'],
+        );
     }
 }

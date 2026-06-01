@@ -14,5 +14,8 @@ All notable changes to Conversa are documented here.
 - Privacy toggles: `store_body`, `redact_provider_response`.
 
 ### Requires
-- Glueful Framework `>=1.49.0`: `auth_basic` passthrough in `Http\Client` (for Twilio Basic auth) and `whatsapp`
-  added to `SendNotification::SUPPORTED_TYPES` (for async delivery).
+- Glueful Framework `>=1.49.1`:
+  - `auth_basic` passthrough in `Http\Client` (for Twilio Basic auth) and `whatsapp`
+    added to `SendNotification::SUPPORTED_TYPES` (for async delivery) — both since 1.49.0.
+  - `QueryValidator` allows reserved SQL words as column names (1.49.1) — the
+    `conversa_messages` table uses a `from` column.

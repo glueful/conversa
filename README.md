@@ -58,7 +58,7 @@ on the [Roadmap](#roadmap).
 ## Requirements
 
 - PHP 8.3+
-- Glueful Framework 1.49.0+
+- Glueful Framework 1.49.1+
 - A configured messaging provider account (Twilio or Meta WhatsApp Cloud API)
 - Outbound HTTPS access to the provider's API (calls go through Glueful's HTTP client)
 

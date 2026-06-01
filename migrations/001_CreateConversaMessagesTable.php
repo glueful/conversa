@@ -18,7 +18,7 @@ final class CreateConversaMessagesTable implements MigrationInterface
             $table->enum('channel', ['sms', 'whatsapp'], 'sms');
             $table->string('driver', 32);
             $table->string('to', 32);
-            $table->string('from_number', 64)->nullable();
+            $table->string('from', 64)->nullable();
 
             // Content (free text and/or WhatsApp template); may be omitted when store_body=false.
             $table->text('body')->nullable();

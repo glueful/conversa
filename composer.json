@@ -38,7 +38,7 @@
             "categories": ["notifications", "communication"],
             "publisher": "glueful-team",
             "provider": "Glueful\\Extensions\\Conversa\\ConversaServiceProvider",
-            "requires": { "glueful": ">=1.49.0", "extensions": [] }
+            "requires": { "glueful": ">=1.49.1", "extensions": [] }
         }
     },
     "config": { "sort-packages": true }

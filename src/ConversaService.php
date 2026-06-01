@@ -176,7 +176,7 @@ final class ConversaService
             'channel' => $m->channel,
             'driver' => $this->driverName($m->channel),
             'to' => $m->to,
-            'from_number' => $m->from,
+            'from' => $m->from,
             'status' => 'queued',
             'idempotency_key' => $m->idempotencyKey,
         ];

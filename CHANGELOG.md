@@ -2,6 +2,18 @@
 
 All notable changes to Conversa are documented here.
 
+## [0.3.0] - 2026-06-06 — Notification Subsystem Refinement (Framework 1.51)
+
+### Added
+- **Structured channel results.** `AbstractConversaChannel` (and so `SmsChannel` / `WhatsAppChannel`) now implements `Glueful\Notifications\Contracts\RichNotificationChannel` and returns a `NotificationResult` from `sendNotification()`. It adapts the existing `DriverResult` — carrying the provider message id and raw provider response into the result metadata, plus send latency — and maps failures to stable error codes: `no_recipient` (no route for the channel → non-retryable) and `send_failed` (driver failure, surfacing the driver error → retryable). The framework dispatcher (1.51.0+) records these per channel; the legacy `send(): bool` contract is preserved by delegating to `sendNotification()`.
+
+### Changed
+- **Minimum framework requirement raised to `glueful/framework >=1.51.0`** (`require-dev` pinned to `^1.51.0`).
+- **Channel registration migrated to the framework's extension helper.** `ConversaServiceProvider::boot()` now calls `registerNotificationChannel()` for the SMS + WhatsApp channels instead of reaching into the container by hand. This is now the **only** wiring path — framework 1.51.0 stopped hardcoding notification providers in its jobs, so a channel that isn't registered from `boot()` won't auto-wire into the shared dispatcher used by async dispatch/retries.
+
+### Notes
+- No change to the active send path, drivers, webhooks, or message storage — `sendNotification()` wraps the same `ConversaService::send()` call the bool `send()` already used.
+
 ## [0.2.0] - 2026-06-05 — Framework 1.50 Compatibility
 
 ### Changed

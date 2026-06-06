@@ -12,6 +12,8 @@ use Glueful\Extensions\Conversa\Drivers\DriverManager;
 use Glueful\Extensions\Conversa\Drivers\LogDriver;
 use Glueful\Extensions\Conversa\Repositories\MessageRepository;
 use Glueful\Notifications\Contracts\Notifiable;
+use Glueful\Notifications\Contracts\RichNotificationChannel;
+use Glueful\Notifications\Results\NotificationResult;
 use Psr\Log\NullLogger;
 use PHPUnit\Framework\TestCase;
 
@@ -66,6 +68,36 @@ final class ChannelsTest extends TestCase
         $this->assertSame('sms', $channel->getChannelName());
         $this->assertTrue($channel->isAvailable());
         $this->assertTrue($channel->send($this->notifiable('+15551234567'), ['body' => 'hi']));
+    }
+
+    public function testSmsChannelIsRichAndReturnsStructuredSuccess(): void
+    {
+        $c = new Connection(['engine' => 'sqlite', 'sqlite' => ['primary' => ':memory:'], 'pooling' => ['enabled' => false]]);
+        $channel = new SmsChannel($this->service($c), available: true);
+
+        $this->assertInstanceOf(RichNotificationChannel::class, $channel);
+
+        $result = $channel->sendNotification($this->notifiable('+15551234567'), ['body' => 'hi']);
+
+        $this->assertInstanceOf(NotificationResult::class, $result);
+        $this->assertTrue($result->success);
+        // LogDriver returns a "log_…" provider id and a {driver: log} raw response.
+        $this->assertIsString($result->providerMessageId);
+        $this->assertStringStartsWith('log_', (string) $result->providerMessageId);
+        $this->assertSame(['driver' => 'log'], $result->metadata);
+        $this->assertNotNull($result->latencyMs);
+    }
+
+    public function testSendNotificationFailsClosedWithoutRecipient(): void
+    {
+        $c = new Connection(['engine' => 'sqlite', 'sqlite' => ['primary' => ':memory:'], 'pooling' => ['enabled' => false]]);
+        $channel = new SmsChannel($this->service($c), available: true);
+
+        $result = $channel->sendNotification($this->notifiable(''), ['body' => 'hi']);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('no_recipient', $result->errorCode);
+        $this->assertFalse($result->retryable);
     }
 
     public function testSmsChannelFailsWhenNoRecipientRouted(): void

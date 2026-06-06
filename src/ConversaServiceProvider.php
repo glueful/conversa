@@ -18,7 +18,6 @@ use Glueful\Extensions\Conversa\Webhooks\TwilioStatusMapper;
 use Glueful\Extensions\Conversa\Webhooks\WhatsAppCloudStatusMapper;
 use Glueful\Extensions\ServiceProvider;
 use Glueful\Http\Client;
-use Glueful\Notifications\Services\ChannelManager;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -152,11 +151,12 @@ final class ConversaServiceProvider extends ServiceProvider
 
     public function boot(ApplicationContext $context): void
     {
-        if ($this->app->has(ChannelManager::class)) {
-            $cm = $this->app->get(ChannelManager::class);
-            $cm->registerChannel($this->app->get(SmsChannel::class));
-            $cm->registerChannel($this->app->get(WhatsAppChannel::class));
-        }
+        // Register the SMS + WhatsApp channels through the framework's extension helper
+        // (1.51.0+). It resolves the shared container ChannelManager and no-ops if the
+        // notification subsystem isn't present — now the only wiring path (the framework no
+        // longer hardcodes notification providers).
+        $this->registerNotificationChannel($this->app->get(SmsChannel::class));
+        $this->registerNotificationChannel($this->app->get(WhatsAppChannel::class));
 
         $this->loadMigrationsFrom(__DIR__ . '/../migrations');
         $this->loadRoutesFrom(__DIR__ . '/../routes.php');

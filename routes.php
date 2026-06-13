@@ -25,7 +25,7 @@ $router->group(['prefix' => '/conversa'], function (Router $router) {
      *   idempotency_key:string="Optional idempotency key (alternative to the Idempotency-Key header)"
      * {required=channel,to}
      * @response 200 application/json "Message accepted (or send failed; see `ok`/`error` in data)"
-     * @response 422 "Validation failed (missing channel/to, or invalid body/template combination)"
+     * @response 422 "Validation failed (missing channel/to, invalid E.164 recipient, or invalid body/template combination)"
      * @response 403 "Missing conversa.messages.send permission"
      */
     $router->post('/messages', [MessageController::class, 'store'])

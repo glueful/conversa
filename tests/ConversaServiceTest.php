@@ -93,6 +93,14 @@ final class ConversaServiceTest extends TestCase
         $this->service()->send('sms', '+15551234567', ['template' => ['name' => 'x']]);
     }
 
+    public function testRecipientMustBeE164(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Recipient must be an E.164 phone number.');
+
+        $this->service()->send('sms', '5551234567', ['body' => 'hi']);
+    }
+
     public function testRetryWithoutPayloadErrorsWhenStoreBodyOff(): void
     {
         $svc = $this->service(['store_body' => false]);

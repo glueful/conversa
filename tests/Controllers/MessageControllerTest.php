@@ -91,4 +91,20 @@ final class MessageControllerTest extends TestCase
         $this->assertSame(1, $payload['total']);
         $this->assertSame('whatsapp', $payload['data'][0]['channel']);
     }
+
+    public function testStoreRejectsNonE164Recipient(): void
+    {
+        $request = Request::create('/conversa/messages', 'POST', [], [], [], [], json_encode([
+            'channel' => 'sms',
+            'to' => '5551234567',
+            'body' => 'hi',
+        ]));
+
+        $response = $this->controller()->store($request);
+        $payload = json_decode((string) $response->getContent(), true);
+
+        $this->assertFalse($payload['success']);
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertArrayHasKey('to', $payload['error']['details']);
+    }
 }

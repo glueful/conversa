@@ -27,6 +27,9 @@ final class MessageController
         if ($channel === '' || $to === '') {
             return Response::validation(['channel' => 'required', 'to' => 'required']);
         }
+        if (!$this->isE164($to)) {
+            return Response::validation(['to' => 'Recipient must be an E.164 phone number.']);
+        }
 
         $payload = isset($in['template']) ? ['template' => $in['template']] : ['body' => (string) ($in['body'] ?? '')];
         $opts = [];
@@ -69,5 +72,10 @@ final class MessageController
             (int) $result['current_page'],
             (int) $result['per_page'],
         );
+    }
+
+    private function isE164(string $to): bool
+    {
+        return preg_match('/^\+[1-9]\d{7,14}$/', $to) === 1;
     }
 }

@@ -42,6 +42,7 @@ final class ConversaService
     public function send(string $channel, string $to, array $payload, array $opts = []): DriverResult
     {
         $this->assertValidPayload($channel, $payload);
+        $this->assertValidRecipient($to);
 
         $idemKey = $opts['idempotency_key'] ?? null;
         if ($idemKey !== null) {
@@ -145,6 +146,13 @@ final class ConversaService
         }
         if ($hasTemplate && $channel !== 'whatsapp') {
             throw new \InvalidArgumentException("Templates are only valid on the 'whatsapp' channel.");
+        }
+    }
+
+    private function assertValidRecipient(string $to): void
+    {
+        if (preg_match('/^\+[1-9]\d{7,14}$/', $to) !== 1) {
+            throw new \InvalidArgumentException('Recipient must be an E.164 phone number.');
         }
     }
 

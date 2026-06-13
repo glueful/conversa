@@ -169,15 +169,21 @@ configured driver and records the result.
 
 ## Endpoints
 
-Base prefix: `/conversa`. Application endpoints require auth and apply rate
-limiting; webhook endpoints are public but signature/verify-token protected.
+Base prefix: `/conversa`. Application endpoints require auth, explicit Conversa
+permissions, and rate limiting; webhook endpoints are public but
+signature/verify-token protected.
 
 | Method & path | Purpose |
 | ------------- | ------- |
-| `POST /conversa/messages` | Send an SMS or WhatsApp message directly (honours an `Idempotency-Key` header) |
-| `GET /conversa/messages` | Query the message log, filterable by `status` / `channel` / `to`, paginated via `page` / `per_page` |
+| `POST /conversa/messages` | Send an SMS or WhatsApp message directly; requires `conversa.messages.send` and honours a user-scoped `Idempotency-Key` header |
+| `GET /conversa/messages` | Query the message log; requires `conversa.messages.read`, filterable by `status` / `channel` / `to`, paginated via `page` / `per_page` |
 | `GET /conversa/webhooks/{provider}` | Provider webhook handshake (e.g. Meta verify token) |
 | `POST /conversa/webhooks/{provider}` | Provider delivery-status callbacks |
+
+Direct HTTP sends require `to` to be an E.164 phone number such as
+`+15551234567`. HTTP idempotency keys are scoped to the authenticated user, so
+two users may safely use the same visible key without replaying each other's
+message.
 
 ```bash
 API_BASE=http://localhost:8000
@@ -199,7 +205,7 @@ curl -s -X POST "$API_BASE/conversa/messages" \
   -d '{ "channel": "whatsapp", "to": "+15551234567",
         "template": { "name": "order_shipped", "variables": ["1Z999"] } }' | jq .
 
-# Idempotent send — repeating the same key returns the original message, no second send
+# Idempotent send — repeating the same key as the same user returns the original message
 curl -s -X POST "$API_BASE/conversa/messages" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -H "Idempotency-Key: order-4711-shipped" \
@@ -308,6 +314,7 @@ Conversa today is the sending + tracking core. Planned follow-ups:
 
 - Treat provider tokens/secrets as secrets; never commit them and restrict who can read the `.env`.
 - Verify webhook authenticity (Meta app-secret signature, provider signing where available) before trusting status updates.
+- Grant `conversa.messages.send` only to callers allowed to spend through the configured provider account, and grant `conversa.messages.read` only to operators allowed to view message recipients and stored bodies.
 - Do not log full message bodies or recipient numbers in production beyond what's needed for support; message bodies may carry sensitive content (see `CONVERSA_STORE_BODY` / `CONVERSA_REDACT_PROVIDER_RESPONSE`).
 - Apply rate limits to send endpoints (included) to prevent abuse and runaway provider spend.
 - Store phone numbers in E.164 and treat them as personal data.

@@ -13,11 +13,13 @@ use Glueful\Extensions\Conversa\Drivers\DriverManager;
 use Glueful\Extensions\Conversa\Drivers\LogDriver;
 use Glueful\Extensions\Conversa\Drivers\TwilioDriver;
 use Glueful\Extensions\Conversa\Drivers\WhatsAppCloudDriver;
+use Glueful\Extensions\Conversa\Http\RequireConversaPermission;
 use Glueful\Extensions\Conversa\Repositories\MessageRepository;
 use Glueful\Extensions\Conversa\Webhooks\TwilioStatusMapper;
 use Glueful\Extensions\Conversa\Webhooks\WhatsAppCloudStatusMapper;
 use Glueful\Extensions\ServiceProvider;
 use Glueful\Http\Client;
+use Glueful\Permissions\Catalog\Permission;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -72,6 +74,12 @@ final class ConversaServiceProvider extends ServiceProvider
                 'class' => Controllers\MessageController::class,
                 'shared' => true,
                 'autowire' => true,
+            ],
+            RequireConversaPermission::class => [
+                'class' => RequireConversaPermission::class,
+                'shared' => true,
+                'autowire' => true,
+                'alias' => ['conversa_permission'],
             ],
         ];
     }
@@ -172,5 +180,21 @@ final class ConversaServiceProvider extends ServiceProvider
         } catch (\Throwable $e) {
             error_log('[Conversa] Failed to register extension metadata: ' . $e->getMessage());
         }
+    }
+
+    public function permissions(): array
+    {
+        return [
+            Permission::define('conversa.messages.send')
+                ->label('Send Conversa messages')
+                ->category('Conversa')
+                ->resource('conversa.messages')
+                ->managedBy('glueful/conversa'),
+            Permission::define('conversa.messages.read')
+                ->label('Read Conversa message logs')
+                ->category('Conversa')
+                ->resource('conversa.messages')
+                ->managedBy('glueful/conversa'),
+        ];
     }
 }

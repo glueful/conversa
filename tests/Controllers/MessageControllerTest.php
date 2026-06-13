@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Conversa\Tests\Controllers;
 
+use Glueful\Auth\UserIdentity;
 use Glueful\Database\Connection;
 use Glueful\Extensions\Conversa\Controllers\MessageController;
 use Glueful\Extensions\Conversa\ConversaService;
@@ -90,5 +91,50 @@ final class MessageControllerTest extends TestCase
 
         $this->assertSame(1, $payload['total']);
         $this->assertSame('whatsapp', $payload['data'][0]['channel']);
+    }
+
+    public function testStoreRejectsNonE164Recipient(): void
+    {
+        $request = Request::create('/conversa/messages', 'POST', [], [], [], [], json_encode([
+            'channel' => 'sms',
+            'to' => '5551234567',
+            'body' => 'hi',
+        ]));
+
+        $response = $this->controller()->store($request);
+        $payload = json_decode((string) $response->getContent(), true);
+
+        $this->assertFalse($payload['success']);
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertArrayHasKey('to', $payload['error']['details']);
+    }
+
+    public function testHttpIdempotencyKeysAreScopedToAuthenticatedUser(): void
+    {
+        $first = Request::create('/conversa/messages', 'POST', [], [], [], [
+            'HTTP_IDEMPOTENCY_KEY' => 'same-key',
+        ], json_encode([
+            'channel' => 'sms',
+            'to' => '+15551234567',
+            'body' => 'one',
+        ]));
+        $first->attributes->set('auth.user', new UserIdentity('user-a'));
+
+        $second = Request::create('/conversa/messages', 'POST', [], [], [], [
+            'HTTP_IDEMPOTENCY_KEY' => 'same-key',
+        ], json_encode([
+            'channel' => 'sms',
+            'to' => '+15559876543',
+            'body' => 'two',
+        ]));
+        $second->attributes->set('auth.user', new UserIdentity('user-b'));
+
+        $this->controller()->store($first);
+        $this->controller()->store($second);
+
+        $rows = $this->connection->table('conversa_messages')->get();
+        $this->assertCount(2, $rows);
+        $this->assertSame('one', $rows[0]['body']);
+        $this->assertSame('two', $rows[1]['body']);
     }
 }

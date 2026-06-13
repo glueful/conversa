@@ -37,13 +37,14 @@ final class ConversaService
 
     /**
      * @param array{body?:string,template?:array<string,mixed>} $payload
-     * @param array{idempotency_key?:string,from?:string,meta?:array<string,mixed>} $opts
+     * @param array{idempotency_key?:string,idempotency_scope?:string,from?:string,meta?:array<string,mixed>} $opts
      */
     public function send(string $channel, string $to, array $payload, array $opts = []): DriverResult
     {
         $this->assertValidPayload($channel, $payload);
+        $this->assertValidRecipient($to);
 
-        $idemKey = $opts['idempotency_key'] ?? null;
+        $idemKey = $this->normalizeIdempotencyKey($opts);
         if ($idemKey !== null) {
             $existing = $this->repository->findByIdempotencyKey($channel, $idemKey);
             if ($existing !== null) {
@@ -51,7 +52,9 @@ final class ConversaService
             }
         }
 
-        $message = $this->buildMessage($channel, $to, $payload, $opts);
+        $message = $this->buildMessage($channel, $to, $payload, array_merge($opts, [
+            'idempotency_key' => $idemKey,
+        ]));
 
         try {
             $uuid = $this->repository->create($this->rowForCreate($message));
@@ -146,6 +149,34 @@ final class ConversaService
         if ($hasTemplate && $channel !== 'whatsapp') {
             throw new \InvalidArgumentException("Templates are only valid on the 'whatsapp' channel.");
         }
+    }
+
+    private function assertValidRecipient(string $to): void
+    {
+        if (preg_match('/^\+[1-9]\d{7,14}$/', $to) !== 1) {
+            throw new \InvalidArgumentException('Recipient must be an E.164 phone number.');
+        }
+    }
+
+    /** @param array<string,mixed> $opts */
+    private function normalizeIdempotencyKey(array $opts): ?string
+    {
+        $key = $opts['idempotency_key'] ?? null;
+        if ($key === null) {
+            return null;
+        }
+
+        $key = trim((string) $key);
+        if ($key === '') {
+            return null;
+        }
+
+        $scope = trim((string) ($opts['idempotency_scope'] ?? ''));
+        if ($scope === '') {
+            return $key;
+        }
+
+        return 'scoped:' . hash('sha256', $scope . "\0" . $key);
     }
 
     /**

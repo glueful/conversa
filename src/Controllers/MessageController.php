@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Conversa\Controllers;
 
+use Glueful\Auth\UserIdentity;
 use Glueful\Extensions\Conversa\ConversaService;
 use Glueful\Extensions\Conversa\Repositories\MessageRepository;
 use Glueful\Http\Response;
@@ -27,12 +28,19 @@ final class MessageController
         if ($channel === '' || $to === '') {
             return Response::validation(['channel' => 'required', 'to' => 'required']);
         }
+        if (!$this->isE164($to)) {
+            return Response::validation(['to' => 'Recipient must be an E.164 phone number.']);
+        }
 
         $payload = isset($in['template']) ? ['template' => $in['template']] : ['body' => (string) ($in['body'] ?? '')];
         $opts = [];
         $idem = $request->headers->get('Idempotency-Key') ?? ($in['idempotency_key'] ?? null);
         if ($idem !== null) {
             $opts['idempotency_key'] = (string) $idem;
+        }
+        $user = $request->attributes->get('auth.user');
+        if ($user instanceof UserIdentity) {
+            $opts['idempotency_scope'] = $user->id();
         }
 
         try {
@@ -69,5 +77,10 @@ final class MessageController
             (int) $result['current_page'],
             (int) $result['per_page'],
         );
+    }
+
+    private function isE164(string $to): bool
+    {
+        return preg_match('/^\+[1-9]\d{7,14}$/', $to) === 1;
     }
 }

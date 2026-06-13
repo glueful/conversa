@@ -87,10 +87,41 @@ final class ConversaServiceTest extends TestCase
         $this->assertSame('one', $rows[0]['body']);
     }
 
+    public function testScopedIdempotencyKeyDoesNotReplayAcrossScopes(): void
+    {
+        $svc = $this->service();
+        $svc->send('sms', '+15551234567', ['body' => 'one'], [
+            'idempotency_key' => 'k1',
+            'idempotency_scope' => 'user-a',
+        ]);
+        $svc->send('sms', '+15559876543', ['body' => 'two'], [
+            'idempotency_key' => 'k1',
+            'idempotency_scope' => 'user-b',
+        ]);
+        $svc->send('sms', '+15551234567', ['body' => 'three'], [
+            'idempotency_key' => 'k1',
+            'idempotency_scope' => 'user-a',
+        ]);
+
+        $rows = $this->connection->table('conversa_messages')->get();
+        $this->assertCount(2, $rows, 'same visible key may be reused by different authenticated users');
+        $this->assertSame('one', $rows[0]['body']);
+        $this->assertSame('two', $rows[1]['body']);
+        $this->assertStringStartsWith('scoped:', (string) $rows[0]['idempotency_key']);
+    }
+
     public function testTemplateRejectedOnSms(): void
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->service()->send('sms', '+15551234567', ['template' => ['name' => 'x']]);
+    }
+
+    public function testRecipientMustBeE164(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Recipient must be an E.164 phone number.');
+
+        $this->service()->send('sms', '5551234567', ['body' => 'hi']);
     }
 
     public function testRetryWithoutPayloadErrorsWhenStoreBodyOff(): void

@@ -7,6 +7,7 @@ All notable changes to Conversa are documented here.
 ### Security
 - Require explicit `conversa.messages.send` and `conversa.messages.read` permissions on the authenticated direct-send and message-log HTTP routes instead of allowing any authenticated user to send messages or read logged recipients/bodies.
 - Validate outbound recipients as E.164 phone numbers before dispatching to provider drivers.
+- Scope HTTP direct-send idempotency keys to the authenticated user before replay lookup/storage, preventing cross-user replay probes of another caller's key.
 
 ## [0.3.0] - 2026-06-06 — Notification Subsystem Refinement (Framework 1.51)
 

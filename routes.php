@@ -14,7 +14,8 @@ $router->group(['prefix' => '/conversa'], function (Router $router) {
      * @summary Send Message
      * @description Sends an SMS or WhatsApp message through the configured provider driver.
      *   Provide exactly one of `body` (free text) or `template` (WhatsApp only). Supply an
-     *   `Idempotency-Key` header (or `idempotency_key` field) to make repeat sends safe.
+     *   `Idempotency-Key` header (or `idempotency_key` field) to make repeat sends safe;
+     *   HTTP idempotency keys are scoped to the authenticated user.
      *   Requires the authenticated user to hold `conversa.messages.send`.
      * @tag Conversa
      * @requestBody

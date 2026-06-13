@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Conversa\Controllers;
 
+use Glueful\Auth\UserIdentity;
 use Glueful\Extensions\Conversa\ConversaService;
 use Glueful\Extensions\Conversa\Repositories\MessageRepository;
 use Glueful\Http\Response;
@@ -36,6 +37,10 @@ final class MessageController
         $idem = $request->headers->get('Idempotency-Key') ?? ($in['idempotency_key'] ?? null);
         if ($idem !== null) {
             $opts['idempotency_key'] = (string) $idem;
+        }
+        $user = $request->attributes->get('auth.user');
+        if ($user instanceof UserIdentity) {
+            $opts['idempotency_scope'] = $user->id();
         }
 
         try {

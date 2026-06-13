@@ -15,6 +15,7 @@ $router->group(['prefix' => '/conversa'], function (Router $router) {
      * @description Sends an SMS or WhatsApp message through the configured provider driver.
      *   Provide exactly one of `body` (free text) or `template` (WhatsApp only). Supply an
      *   `Idempotency-Key` header (or `idempotency_key` field) to make repeat sends safe.
+     *   Requires the authenticated user to hold `conversa.messages.send`.
      * @tag Conversa
      * @requestBody
      *   channel:string="Channel: sms|whatsapp"
@@ -25,20 +26,23 @@ $router->group(['prefix' => '/conversa'], function (Router $router) {
      * {required=channel,to}
      * @response 200 application/json "Message accepted (or send failed; see `ok`/`error` in data)"
      * @response 422 "Validation failed (missing channel/to, or invalid body/template combination)"
+     * @response 403 "Missing conversa.messages.send permission"
      */
     $router->post('/messages', [MessageController::class, 'store'])
-        ->middleware(['auth', 'rate_limit:60,1']);
+        ->middleware(['auth', 'conversa_permission:conversa.messages.send', 'rate_limit:60,1']);
 
     /**
      * @route GET /conversa/messages
      * @summary List Messages
      * @description Lists logged messages (most recent first), optionally filtered by
-     *   status, channel, or recipient.
+     *   status, channel, or recipient. Requires `conversa.messages.read` because the log
+     *   can contain recipients and message bodies when body storage is enabled.
      * @tag Conversa
      * @response 200 application/json "Messages retrieved"
+     * @response 403 "Missing conversa.messages.read permission"
      */
     $router->get('/messages', [MessageController::class, 'index'])
-        ->middleware(['auth', 'rate_limit:100,1']);
+        ->middleware(['auth', 'conversa_permission:conversa.messages.read', 'rate_limit:100,1']);
 
     /**
      * @route GET /conversa/webhooks/{provider}

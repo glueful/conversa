@@ -2,6 +2,11 @@
 
 All notable changes to Conversa are documented here.
 
+## [Unreleased]
+
+### Security
+- Require explicit `conversa.messages.send` and `conversa.messages.read` permissions on the authenticated direct-send and message-log HTTP routes instead of allowing any authenticated user to send messages or read logged recipients/bodies.
+
 ## [0.3.0] - 2026-06-06 — Notification Subsystem Refinement (Framework 1.51)
 
 ### Added

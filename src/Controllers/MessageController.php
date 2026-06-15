@@ -8,6 +8,9 @@ use Glueful\Auth\UserIdentity;
 use Glueful\Extensions\Conversa\ConversaService;
 use Glueful\Extensions\Conversa\Repositories\MessageRepository;
 use Glueful\Http\Response;
+use Glueful\Routing\Attributes\ApiOperation;
+use Glueful\Routing\Attributes\ApiResponse;
+use Glueful\Routing\Attributes\QueryParam;
 use Symfony\Component\HttpFoundation\Request;
 
 final class MessageController
@@ -18,6 +21,26 @@ final class MessageController
     ) {
     }
 
+    /**
+     * Send an SMS or WhatsApp message.
+     */
+    #[ApiOperation(
+        summary: 'Send Message',
+        description: 'Sends an SMS or WhatsApp message through the configured provider driver. '
+            . 'Provide exactly one of `body` (free text) or `template` (WhatsApp only). Supply an '
+            . '`Idempotency-Key` header (or `idempotency_key` field) to make repeat sends safe; '
+            . 'HTTP idempotency keys are scoped to the authenticated user. '
+            . 'Body: `channel` (required; sms|whatsapp), `to` (required; E.164 recipient, e.g. '
+            . '+15551234567), `body` (message text, use this OR template), `template` (WhatsApp '
+            . 'template object {name, language, variables}, use this OR body), `idempotency_key` '
+            . '(optional, alternative to the Idempotency-Key header). '
+            . 'Requires the `conversa.messages.send` permission.',
+        tags: ['Conversa'],
+    )]
+    #[ApiResponse(200, description: 'Message accepted (or send failed; see `ok`/`error` in data)')]
+    #[ApiResponse(422, description: 'Validation failed (missing channel/to, invalid E.164 recipient, '
+        . 'or invalid body/template combination)')]
+    #[ApiResponse(403, description: 'Missing conversa.messages.send permission')]
     public function store(Request $request): Response
     {
         /** @var array<string,mixed> $in */
@@ -56,6 +79,23 @@ final class MessageController
         ], $result->ok ? 'Message accepted' : 'Send failed');
     }
 
+    /**
+     * List logged messages.
+     */
+    #[ApiOperation(
+        summary: 'List Messages',
+        description: 'Lists logged messages (most recent first), optionally filtered by '
+            . 'status, channel, or recipient. Requires `conversa.messages.read` because the log '
+            . 'can contain recipients and message bodies when body storage is enabled.',
+        tags: ['Conversa'],
+    )]
+    #[QueryParam('status', description: 'Filter by message status')]
+    #[QueryParam('channel', description: 'Filter by channel (sms|whatsapp)')]
+    #[QueryParam('to', description: 'Filter by recipient phone number')]
+    #[QueryParam('page', 'integer', description: 'Page number for pagination (default: 1)')]
+    #[QueryParam('per_page', 'integer', description: 'Number of items per page (default: 25, max: 100)')]
+    #[ApiResponse(200, description: 'Messages retrieved')]
+    #[ApiResponse(403, description: 'Missing conversa.messages.read permission')]
     public function index(Request $request): Response
     {
         $conditions = [];

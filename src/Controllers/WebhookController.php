@@ -9,6 +9,8 @@ use Glueful\Extensions\Conversa\Events\MessageFailed;
 use Glueful\Extensions\Conversa\Repositories\MessageRepository;
 use Glueful\Extensions\Conversa\Webhooks\StatusMapper;
 use Glueful\Http\Response as ApiResponse;
+use Glueful\Routing\Attributes\ApiOperation;
+use Glueful\Routing\Attributes\ApiResponse as ApiResponseDoc;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -31,6 +33,24 @@ final class WebhookController
     ) {
     }
 
+    /**
+     * Verify a provider webhook subscription (Meta handshake).
+     */
+    #[ApiOperation(
+        summary: 'Verify Webhook (Meta handshake)',
+        description: 'Handles the Meta WhatsApp Cloud subscription handshake. Echoes the '
+            . '`hub.challenge` as text/plain when `hub.verify_token` matches the configured token. '
+            . '`{provider}` is the driver key (e.g., `whatsapp_cloud`). Public, no auth.',
+        tags: ['Conversa'],
+    )]
+    #[ApiResponseDoc(
+        200,
+        description: 'Challenge echoed (subscription verified)',
+        envelope: false,
+        contentType: 'text/plain',
+        body: 'text',
+    )]
+    #[ApiResponseDoc(403, description: 'Invalid verify token')]
     public function verify(Request $request, string $provider): Response
     {
         // Meta hub challenge handshake — must echo the raw challenge as text/plain.
@@ -50,6 +70,19 @@ final class WebhookController
         return ApiResponse::forbidden('Invalid verify token');
     }
 
+    /**
+     * Receive a provider delivery-status callback.
+     */
+    #[ApiOperation(
+        summary: 'Receive Delivery Status',
+        description: 'Receives provider delivery-status callbacks and updates the matching '
+            . 'message log. `{provider}` is the driver key (e.g., `twilio`, `whatsapp_cloud`). '
+            . 'Public; the request signature is verified inside the controller (fail-closed).',
+        tags: ['Conversa'],
+    )]
+    #[ApiResponseDoc(200, description: 'Status processed')]
+    #[ApiResponseDoc(403, description: 'Invalid signature')]
+    #[ApiResponseDoc(404, description: 'Unknown provider')]
     public function handle(Request $request, string $provider): Response
     {
         $mapper = $this->mappers[$provider] ?? null;

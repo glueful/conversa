@@ -4,6 +4,8 @@ All notable changes to Conversa are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-19
+
 ### Added
 - Declares the Glueful schema manifest (migration descriptors, requires.extensions, structural
   verifier); requires framework >=1.79.0 for schema-on-enable participation. Migrations are now

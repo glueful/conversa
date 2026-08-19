@@ -34,7 +34,7 @@
             "name": "Conversa",
             "displayName": "Conversa (SMS & WhatsApp)",
             "description": "SMS & WhatsApp messaging channels for Glueful",
-            "version": "0.5.0",
+            "version": "0.6.0",
             "categories": ["notifications", "communication"],
             "publisher": "glueful-team",
             "provider": "Glueful\\Extensions\\Conversa\\ConversaServiceProvider",

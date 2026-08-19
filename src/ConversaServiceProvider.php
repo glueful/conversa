@@ -166,7 +166,6 @@ final class ConversaServiceProvider extends ServiceProvider
         $this->registerNotificationChannel($this->app->get(SmsChannel::class));
         $this->registerNotificationChannel($this->app->get(WhatsAppChannel::class));
 
-        $this->loadMigrationsFrom(__DIR__ . '/../migrations');
         $this->loadRoutesFrom(__DIR__ . '/../routes.php');
 
         // Register extension metadata for CLI and diagnostics.
